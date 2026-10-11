@@ -165,6 +165,7 @@
 <body>
 <main>
   <section id="setup">
+    <p>1.1</p>
     <h1>Chiave API di Gemini</h1>
     <p>Incollala una volta sola: resta salvata su questo telefono. Si crea gratis su Google AI Studio.</p>
     <input id="keyInput" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="AIza…">
@@ -256,7 +257,7 @@
     return c.toDataURL('image/jpeg', 0.85).split(',')[1];
   }
 
-  async function ask(b64) {
+  async function ask(b64, useSearch) {
     const r = await fetch(
       'https://generativelanguage.googleapis.com/v1beta/models/' + MODEL + ':generateContent',
       {
@@ -267,7 +268,7 @@
             { inline_data: { mime_type: 'image/jpeg', data: b64 } },
             { text: PROMPT }
           ]}],
-          tools: [{ google_search: {} }],
+          ...(useSearch ? { tools: [{ google_search: {} }] } : {}),
           generationConfig: { temperature: 0 }
         })
       }
@@ -293,12 +294,24 @@
     show('loading');
     try {
       const b64 = await toJpegBase64(f);
-      const n = await ask(b64);
-      show('done', { value: String(n) });
+      let n, senzaRicerca = false;
+      try {
+        n = await ask(b64, true);
+      } catch (e) {
+        if (e.status !== 429) throw e;
+        // Quota esaurita o assente per la ricerca Google: riprovo senza ricerca
+        n = await ask(b64, false);
+        senzaRicerca = true;
+      }
+      show('done', {
+        value: String(n),
+        text: senzaRicerca ? 'Risposta data senza ricerca su Google (quota non disponibile).' : ''
+      });
     } catch (e) {
-      let text = e.message || 'Qualcosa è andato storto.';
-      if (e.status === 400 || e.status === 403) text = 'Chiave non valida o non autorizzata. Usa “Cambia chiave”.';
-      if (e.status === 429) text = 'Limite di richieste raggiunto. Riprova tra un minuto.';
+      const real = (e.message || '').replace(/\s+/g, ' ').slice(0, 240);
+      let text = real || 'Qualcosa è andato storto.';
+      if (/api key/i.test(real) || e.status === 403) text = 'Chiave non valida o non autorizzata. Usa “Cambia chiave”. (' + real + ')';
+      if (e.status === 429) text = 'Quota Google esaurita: ' + real;
       if (!navigator.onLine) text = 'Sei offline.';
       show('error', { text, error: true });
     }
