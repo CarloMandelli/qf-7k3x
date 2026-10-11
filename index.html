@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>Quiz foto</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Quiz foto">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#F1F3F7">
+<style>
+  :root {
+    --paper: #F1F3F7;
+    --ink: #14213D;
+    --muted: #5B6479;
+    --line: #B3BBCD;
+    --fill: #1B2B6B;
+    --on-fill: #F1F3F7;
+    --err: #B3261E;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #10131C;
+      --ink: #E8ECF6;
+      --muted: #9AA3B8;
+      --line: #3A4256;
+      --fill: #B4C3FF;
+      --on-fill: #10131C;
+      --err: #FF8A80;
+    }
+  }
+  *, *::before, *::after { box-sizing: inherit; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+  }
+  main {
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 28px;
+    padding: 24px 24px 72px;
+  }
+
+  /* Il cerchio: richiama la bolla da riempire nelle schede dei test */
+  #stage {
+    width: min(72vw, 320px);
+    aspect-ratio: 1;
+    border-radius: 50%;
+    border: 3px dashed var(--line);
+    display: grid;
+    place-items: center;
+    color: var(--muted);
+    cursor: pointer;
+    transition: background-color .25s ease, border-color .25s ease, color .25s ease;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  #stage[data-state="loading"] {
+    border-style: solid;
+    border-color: var(--line);
+    border-top-color: var(--fill);
+    animation: spin 0.9s linear infinite;
+    cursor: default;
+  }
+  #stage[data-state="loading"] > * { animation: spin-back 0.9s linear infinite; }
+  #stage[data-state="done"] {
+    border-style: solid;
+    border-color: var(--fill);
+    background: var(--fill);
+    color: var(--on-fill);
+  }
+  #stage[data-state="error"] { border-color: var(--err); color: var(--err); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes spin-back { to { transform: rotate(-360deg); } }
+  @media (prefers-reduced-motion: reduce) {
+    #stage[data-state="loading"], #stage[data-state="loading"] > * { animation: none; }
+  }
+
+  #stage svg { width: 38%; height: auto; }
+  #number {
+    font-size: clamp(5.5rem, 34vw, 11rem);
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  #dots { font-size: 2.5rem; letter-spacing: .15em; }
+  #mark { font-size: 4rem; font-weight: 700; line-height: 1; }
+
+  #msg {
+    min-height: 3em;
+    max-width: 22rem;
+    margin: 0;
+    text-align: center;
+    color: var(--muted);
+    font-size: 1rem;
+    line-height: 1.5;
+  }
+  #msg.err { color: var(--err); }
+
+  button {
+    font: inherit;
+    cursor: pointer;
+  }
+  #cta {
+    appearance: none;
+    border: 0;
+    border-radius: 999px;
+    background: var(--fill);
+    color: var(--on-fill);
+    font-size: 1.25rem;
+    font-weight: 600;
+    padding: 18px 36px;
+    min-width: 15rem;
+  }
+  #cta:active { transform: scale(.98); }
+  #cta[hidden] { display: none; }
+  button:focus-visible, input:focus-visible { outline: 3px solid var(--fill); outline-offset: 3px; }
+
+  #keyLink {
+    position: fixed;
+    left: 0; right: 0;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+    margin: 0 auto;
+    width: max-content;
+    background: none;
+    border: 0;
+    color: var(--muted);
+    font-size: .9rem;
+    text-decoration: underline;
+    padding: 8px 12px;
+  }
+
+  /* Configurazione chiave, una sola volta */
+  #setup { display: none; width: min(100%, 22rem); flex-direction: column; gap: 14px; text-align: center; }
+  #setup h1 { font-size: 1.4rem; margin: 0; }
+  #setup p { margin: 0; color: var(--muted); line-height: 1.5; font-size: .95rem; }
+  #setup input {
+    font: inherit;
+    font-size: 1rem;
+    padding: 14px 16px;
+    border-radius: 14px;
+    border: 2px solid var(--line);
+    background: transparent;
+    color: var(--ink);
+    width: 100%;
+  }
+  body.setup #app { display: none; }
+  body.setup #keyLink { display: none; }
+  body.setup #setup { display: flex; }
+
+  .sr { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; pointer-events: none; }
+</style>
+</head>
+<body>
+<main>
+  <section id="setup">
+    <h1>Chiave API di Gemini</h1>
+    <p>Incollala una volta sola: resta salvata su questo telefono. Si crea gratis su Google AI Studio.</p>
+    <input id="keyInput" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="AIza…">
+    <button id="keySave" class="primary" style="appearance:none;border:0;border-radius:999px;background:var(--fill);color:var(--on-fill);font-weight:600;font-size:1.1rem;padding:16px 28px;">Salva</button>
+  </section>
+
+  <section id="app" style="display:contents">
+    <div id="stage" data-state="idle" role="button" tabindex="0" aria-label="Scatta foto">
+      <svg id="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M6 16a3 3 0 0 1 3-3h5l2.5-4h15L34 13h5a3 3 0 0 1 3 3v21a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3z"/>
+        <circle cx="24" cy="26" r="7.5"/>
+      </svg>
+      <span id="dots" hidden>…</span>
+      <span id="number" hidden></span>
+      <span id="mark" hidden>!</span>
+    </div>
+    <p id="msg" role="status" aria-live="polite"></p>
+    <button id="cta" type="button">Scatta foto</button>
+  </section>
+
+  <button id="keyLink" type="button">Cambia chiave</button>
+  <input id="file" class="sr" type="file" accept="image/*" capture="environment" tabindex="-1" aria-hidden="true">
+</main>
+
+<script>
+(() => {
+  // Modello Gemini: se Google lo rinomina, cambia solo questa riga.
+  const MODEL = 'gemini-flash-latest';
+  const MAX_SIDE = 1600;
+  const KEY_STORAGE = 'quizfoto.apikey';
+
+  const PROMPT =
+    "Nell'immagine c'è una domanda a risposta multipla. " +
+    "Individua la risposta corretta, cercando su Google quando serve. " +
+    "Numera le opzioni nell'ordine in cui compaiono nell'immagine, dall'alto verso il basso, " +
+    "partendo da 1, a prescindere da come sono etichettate (A, B, C… oppure 1, 2, 3…). " +
+    "Rispondi esclusivamente con una riga in questo formato: RISPOSTA: <numero>";
+
+  const $ = id => document.getElementById(id);
+  const stage = $('stage'), icon = $('icon'), dots = $('dots'), number = $('number'), mark = $('mark');
+  const msg = $('msg'), cta = $('cta'), file = $('file');
+
+  function getKey() {
+    try { return localStorage.getItem(KEY_STORAGE) || ''; } catch { return ''; }
+  }
+  function setKey(v) {
+    try { localStorage.setItem(KEY_STORAGE, v); } catch {}
+  }
+
+  function show(state, { text = '', value = '', error = false } = {}) {
+    stage.dataset.state = state;
+    icon.hidden = state !== 'idle';
+    dots.hidden = state !== 'loading';
+    number.hidden = state !== 'done';
+    mark.hidden = state !== 'error';
+    number.textContent = value;
+    msg.textContent = text;
+    msg.classList.toggle('err', error);
+    cta.hidden = state === 'loading';
+    cta.textContent = state === 'idle' ? 'Scatta foto'
+                    : state === 'error' ? 'Riprova con un’altra foto'
+                    : 'Scatta un’altra foto';
+    stage.setAttribute('aria-label', state === 'done' ? 'Risposta ' + value : 'Scatta foto');
+  }
+
+  function openCamera() {
+    if (stage.dataset.state === 'loading') return;
+    file.click();
+  }
+
+  async function toJpegBase64(f) {
+    let src;
+    try {
+      src = await createImageBitmap(f);
+    } catch {
+      src = await new Promise((res, rej) => {
+        const img = new Image();
+        img.onload = () => res(img);
+        img.onerror = rej;
+        img.src = URL.createObjectURL(f);
+      });
+    }
+    const w = src.width || src.naturalWidth, h = src.height || src.naturalHeight;
+    const k = Math.min(1, MAX_SIDE / Math.max(w, h));
+    const c = document.createElement('canvas');
+    c.width = Math.round(w * k);
+    c.height = Math.round(h * k);
+    c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', 0.85).split(',')[1];
+  }
+
+  async function ask(b64) {
+    const r = await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models/' + MODEL + ':generateContent',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getKey() },
+        body: JSON.stringify({
+          contents: [{ parts: [
+            { inline_data: { mime_type: 'image/jpeg', data: b64 } },
+            { text: PROMPT }
+          ]}],
+          tools: [{ google_search: {} }],
+          generationConfig: { temperature: 0 }
+        })
+      }
+    );
+    if (!r.ok) {
+      let detail = '';
+      try { detail = (await r.json()).error?.message || ''; } catch {}
+      const err = new Error(detail || 'Errore ' + r.status);
+      err.status = r.status;
+      throw err;
+    }
+    const j = await r.json();
+    const text = (j.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
+    const m = text.match(/RISPOSTA:\s*(\d+)/i) || text.match(/^\s*(\d+)\s*$/);
+    if (!m) throw new Error('Non sono riuscito a leggere una risposta. Inquadra meglio domanda e opzioni.');
+    return parseInt(m[1], 10);
+  }
+
+  async function onPhoto() {
+    const f = file.files && file.files[0];
+    file.value = '';            // permette di riscattare subito
+    if (!f) return;
+    show('loading');
+    try {
+      const b64 = await toJpegBase64(f);
+      const n = await ask(b64);
+      show('done', { value: String(n) });
+    } catch (e) {
+      let text = e.message || 'Qualcosa è andato storto.';
+      if (e.status === 400 || e.status === 403) text = 'Chiave non valida o non autorizzata. Usa “Cambia chiave”.';
+      if (e.status === 429) text = 'Limite di richieste raggiunto. Riprova tra un minuto.';
+      if (!navigator.onLine) text = 'Sei offline.';
+      show('error', { text, error: true });
+    }
+  }
+
+  // Configurazione chiave
+  function enterSetup() {
+    document.body.classList.add('setup');
+    $('keyInput').value = '';
+    $('keyInput').focus();
+  }
+  function leaveSetup() {
+    document.body.classList.remove('setup');
+    show('idle');
+  }
+  $('keySave').addEventListener('click', () => {
+    const v = $('keyInput').value.trim();
+    if (!v) return;
+    setKey(v);
+    leaveSetup();
+  });
+  $('keyInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('keySave').click(); });
+  $('keyLink').addEventListener('click', enterSetup);
+
+  // Interazioni principali
+  cta.addEventListener('click', openCamera);
+  stage.addEventListener('click', openCamera);
+  stage.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openCamera(); }
+  });
+  file.addEventListener('change', onPhoto);
+
+  if (getKey()) show('idle'); else enterSetup();
+})();
+</script>
+</body>
+</html>
